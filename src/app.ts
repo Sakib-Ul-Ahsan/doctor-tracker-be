@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
+import mongoose from "mongoose";
 import { env } from "./config/env";
 import apiRoutes from "./routes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
@@ -36,6 +37,33 @@ export function createApp() {
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
+
+  // Root info and dedicated health check endpoints
+  const healthHandler = (_req: express.Request, res: express.Response) => {
+    const dbState = mongoose.connection.readyState;
+    const dbStatus =
+      dbState === 1 ? "connected" : dbState === 2 ? "connecting" : "disconnected";
+
+    res.status(200).json({
+      success: true,
+      data: {
+        status: "ok",
+        uptime: Math.round(process.uptime()),
+        database: dbStatus,
+        timestamp: new Date().toISOString(),
+        environment: env.NODE_ENV,
+      },
+    });
+  };
+
+  app.get("/", (_req, res) => {
+    res.status(200).json({
+      success: true,
+      message: "Doctor Tracker API is online",
+      health: "/health",
+    });
+  });
+  app.get("/health", healthHandler);
 
   // Mount routes under both /api and /api/v1 for backwards compatibility
   app.use("/api/v1", apiRoutes);
