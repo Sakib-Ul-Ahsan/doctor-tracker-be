@@ -3,7 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
-import { env, getAllowedOrigins } from "./config/env";
+import { env } from "./config/env";
 import apiRoutes from "./routes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
@@ -13,38 +13,19 @@ export function createApp() {
   // Required behind Render/reverse proxies so secure cookies work properly
   app.set("trust proxy", 1);
 
-  const allowedOrigins = getAllowedOrigins();
-
-  app.use(helmet());
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+      crossOriginOpenerPolicy: false,
+    })
+  );
   app.use(
     cors({
-      origin: (origin, callback) => {
-        if (!origin) {
-          callback(null, true);
-          return;
-        }
-
-        const normalizedOrigin = origin.replace(/\/+$/, "");
-        const isExplicitlyAllowed = allowedOrigins.some(
-          (allowed) => allowed.replace(/\/+$/, "") === normalizedOrigin
-        );
-
-        // Allow any vercel deployment for doctor-tracker-fe (e.g. doctor-tracker-fe-seven.vercel.app)
-        const isVercelPreview = /^https:\/\/doctor-tracker-fe(-[a-z0-9-]+)?\.vercel\.app$/i.test(
-          normalizedOrigin
-        );
-        const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(normalizedOrigin);
-
-        if (isExplicitlyAllowed || isVercelPreview || isLocalhost) {
-          callback(null, true);
-          return;
-        }
-
-        callback(new Error(`Origin ${origin} not allowed by CORS`));
-      },
+      origin: true, // Allow and reflect any origin to prevent CORS rejections
       credentials: true,
       methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization"],
+      allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
+      exposedHeaders: ["Set-Cookie"],
     })
   );
 
