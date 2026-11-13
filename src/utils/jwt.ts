@@ -22,22 +22,23 @@ export function verifyAuthToken(token: string): AuthTokenPayload {
 }
 
 export function getAuthCookieOptions(): CookieOptions {
-  const isProduction = env.NODE_ENV === "production";
+  // Always use SameSite=None and Secure for cross-origin hosting (Vercel/Render)
+  const isLocalhost = env.CLIENT_URL.includes("localhost") && env.NODE_ENV === "development";
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? "none" : "lax",
+    secure: !isLocalhost,
+    sameSite: isLocalhost ? "lax" : "none",
     path: "/",
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   };
 }
 
 export function getClearCookieOptions(): CookieOptions {
-  const isProduction = env.NODE_ENV === "production";
+  const isLocalhost = env.CLIENT_URL.includes("localhost") && env.NODE_ENV === "development";
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? "none" : "lax",
+    secure: !isLocalhost,
+    sameSite: isLocalhost ? "lax" : "none",
     path: "/",
   };
 }

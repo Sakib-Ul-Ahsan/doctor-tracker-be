@@ -40,6 +40,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     res,
     200,
     {
+      token,
       admin: {
         id: String(admin._id),
         name: admin.name,

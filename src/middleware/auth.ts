@@ -24,7 +24,18 @@ export async function authenticate(
   next: NextFunction
 ): Promise<void> {
   try {
-    const token = req.cookies?.[AUTH_COOKIE_NAME];
+    let token: string | undefined;
+
+    // 1. Check Authorization header: Bearer <token>
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.slice(7).trim();
+    }
+
+    // 2. Fallback to HttpOnly cookie
+    if (!token && req.cookies?.[AUTH_COOKIE_NAME]) {
+      token = req.cookies[AUTH_COOKIE_NAME];
+    }
 
     if (!token || typeof token !== "string") {
       throw new AppError(401, "Authentication required. Please sign in.", {
