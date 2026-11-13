@@ -23,10 +23,23 @@ export function createApp() {
           callback(null, true);
           return;
         }
-        if (allowedOrigins.includes(origin)) {
+
+        const normalizedOrigin = origin.replace(/\/+$/, "");
+        const isExplicitlyAllowed = allowedOrigins.some(
+          (allowed) => allowed.replace(/\/+$/, "") === normalizedOrigin
+        );
+
+        // Allow any vercel deployment for doctor-tracker-fe (e.g. doctor-tracker-fe-seven.vercel.app)
+        const isVercelPreview = /^https:\/\/doctor-tracker-fe(-[a-z0-9-]+)?\.vercel\.app$/i.test(
+          normalizedOrigin
+        );
+        const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(normalizedOrigin);
+
+        if (isExplicitlyAllowed || isVercelPreview || isLocalhost) {
           callback(null, true);
           return;
         }
+
         callback(new Error(`Origin ${origin} not allowed by CORS`));
       },
       credentials: true,
@@ -43,6 +56,8 @@ export function createApp() {
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
 
+  // Mount routes under both /api and /api/v1 for backwards compatibility
+  app.use("/api/v1", apiRoutes);
   app.use("/api", apiRoutes);
 
   app.use(notFoundHandler);

@@ -29,7 +29,7 @@ export const env = parsed.data;
 
 export function getAllowedOrigins(): string[] {
   return env.CLIENT_URL.split(",")
-    .map((origin) => origin.trim())
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
     .filter(Boolean);
 }
 
