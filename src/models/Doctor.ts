@@ -39,7 +39,13 @@ const doctorSchema = new Schema<IDoctorDocument>(
       type: String,
       required: [true, "Phone number is required"],
       trim: true,
-      maxlength: [30, "Phone number cannot exceed 30 characters"],
+      unique: true,
+      validate: {
+        validator: function (v: string) {
+          return /^8801[3-9]\d{8}$/.test(v);
+        },
+        message: "Phone number must be a valid 13-digit Bangladeshi number in 8801XXXXXXXXX format",
+      },
     },
     email: {
       type: String,
@@ -55,6 +61,8 @@ const doctorSchema = new Schema<IDoctorDocument>(
   }
 );
 
+doctorSchema.index({ email: 1 }, { unique: true });
+doctorSchema.index({ phone: 1 }, { unique: true });
 doctorSchema.index({ specialization: 1 });
 doctorSchema.index({ hospital: 1 });
 doctorSchema.index({ name: 1 });

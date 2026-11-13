@@ -1,5 +1,6 @@
 import { z } from "zod";
 import mongoose from "mongoose";
+import { bdPhoneSchema } from "./phone.validator";
 
 const objectIdSchema = z
   .string()
@@ -27,11 +28,7 @@ export const createDoctorSchema = z.object({
     .trim()
     .min(2, "Hospital name must be at least 2 characters")
     .max(150, "Hospital name cannot exceed 150 characters"),
-  phone: z
-    .string()
-    .trim()
-    .min(5, "Phone number must be at least 5 characters")
-    .max(30, "Phone number cannot exceed 30 characters"),
+  phone: bdPhoneSchema,
   email: z.string().trim().email("Please enter a valid email address").toLowerCase(),
 });
 

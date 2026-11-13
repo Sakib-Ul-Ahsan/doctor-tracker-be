@@ -1,9 +1,13 @@
 import { createApp } from "./app";
 import { connectDatabase, disconnectDatabase } from "./config/db";
 import { env } from "./config/env";
+import { syncContactRegistry } from "./utils/contactUniqueness";
 
 async function startServer() {
   await connectDatabase();
+  await syncContactRegistry().catch((err) => {
+    console.warn("Contact registry sync notice:", err.message);
+  });
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {

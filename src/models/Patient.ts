@@ -44,11 +44,18 @@ const patientSchema = new Schema<IPatientDocument>(
       type: String,
       required: [true, "Phone number is required"],
       trim: true,
-      maxlength: [30, "Phone number cannot exceed 30 characters"],
+      unique: true,
+      validate: {
+        validator: function (v: string) {
+          return /^8801[3-9]\d{8}$/.test(v);
+        },
+        message: "Phone number must be a valid 13-digit Bangladeshi number in 8801XXXXXXXXX format",
+      },
     },
     email: {
       type: String,
       required: [true, "Email is required"],
+      unique: true,
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, "Please provide a valid email address"],
@@ -71,6 +78,8 @@ const patientSchema = new Schema<IPatientDocument>(
   }
 );
 
+patientSchema.index({ email: 1 }, { unique: true });
+patientSchema.index({ phone: 1 }, { unique: true });
 patientSchema.index({ doctorId: 1 });
 patientSchema.index({ createdAt: -1 });
 patientSchema.index({ condition: 1 });

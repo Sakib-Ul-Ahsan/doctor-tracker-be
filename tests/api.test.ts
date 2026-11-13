@@ -56,12 +56,12 @@ describe("Doctor Tracker Backend API", () => {
   });
 
   it("manages doctors, patients, safe deletion policy, and dashboard aggregations", async () => {
-    // Create two doctors
+    // Create two doctors with valid 13-digit Bangladeshi phone numbers (8801XXXXXXXXX)
     const doc1Res = await agent.post("/api/doctors").send({
       name: "Dr. Ashraful Alam",
       specialization: "Cardiology",
       hospital: "Dhaka Medical College Hospital",
-      phone: "+880-1711-001001",
+      phone: "8801711001001",
       email: "ashraful@dmch.gov.bd",
     });
     expect(doc1Res.status).toBe(201);
@@ -71,24 +71,90 @@ describe("Doctor Tracker Backend API", () => {
       name: "Dr. Samira Chowdhury",
       specialization: "Neurology",
       hospital: "Square Hospital, Dhaka",
-      phone: "+880-1711-001002",
+      phone: "8801711001002",
       email: "samira@square.org.bd",
     });
     expect(doc2Res.status).toBe(201);
     const doc2Id = doc2Res.body.data.doctor._id;
 
-    // Create patient under doctor 1
+    // Create patient under doctor 1 with valid 13-digit Bangladeshi phone number
     const patientRes = await agent.post("/api/patients").send({
       name: "Kamal Uddin",
       age: 45,
       gender: "Male",
-      phone: "+880-1812-002001",
+      phone: "8801812002001",
       email: "kamal.uddin@example.com",
       condition: "Hypertension",
       doctorId: doc1Id,
     });
     expect(patientRes.status).toBe(201);
     const patientId = patientRes.body.data.patient._id;
+
+    // 1. Phone validation tests: reject invalid formats
+    const badPhoneRes = await agent.post("/api/doctors").send({
+      name: "Dr. Invalid Phone",
+      specialization: "General Medicine",
+      hospital: "City Hospital",
+      phone: "+8801711001999", // contains '+'
+      email: "invalid.phone@city.org",
+    });
+    expect(badPhoneRes.status).toBe(400);
+
+    const nonBdPhoneRes = await agent.post("/api/patients").send({
+      name: "Bad Phone Patient",
+      age: 30,
+      gender: "Female",
+      phone: "01711001999", // missing 880 prefix
+      email: "bad.phone@patient.org",
+      condition: "Fever",
+      doctorId: doc2Id,
+    });
+    expect(nonBdPhoneRes.status).toBe(400);
+
+    // 2. Cross-application uniqueness tests
+    // A doctor cannot register with an email already used by a patient
+    const docDupPatientEmailRes = await agent.post("/api/doctors").send({
+      name: "Dr. Duplicate Patient Email",
+      specialization: "General",
+      hospital: "Clinic",
+      phone: "8801912002002",
+      email: "KAMAL.UDDIN@example.com", // case-insensitive match with existing patient
+    });
+    expect(docDupPatientEmailRes.status).toBe(409);
+
+    // A doctor cannot register with a phone already used by a patient
+    const docDupPatientPhoneRes = await agent.post("/api/doctors").send({
+      name: "Dr. Duplicate Patient Phone",
+      specialization: "General",
+      hospital: "Clinic",
+      phone: "8801812002001", // matches patient phone
+      email: "new.doctor.unique@clinic.org",
+    });
+    expect(docDupPatientPhoneRes.status).toBe(409);
+
+    // A patient cannot register with an email already used by a doctor
+    const patientDupDocEmailRes = await agent.post("/api/patients").send({
+      name: "Patient Duplicate Doc Email",
+      age: 28,
+      gender: "Male",
+      phone: "8801612002003",
+      email: "samira@square.org.bd", // matches doctor 2 email
+      condition: "Asthma",
+      doctorId: doc2Id,
+    });
+    expect(patientDupDocEmailRes.status).toBe(409);
+
+    // A patient cannot register with a phone already used by a doctor
+    const patientDupDocPhoneRes = await agent.post("/api/patients").send({
+      name: "Patient Duplicate Doc Phone",
+      age: 28,
+      gender: "Male",
+      phone: "8801711001002", // matches doctor 2 phone
+      email: "unique.patient.email@example.com",
+      condition: "Asthma",
+      doctorId: doc2Id,
+    });
+    expect(patientDupDocPhoneRes.status).toBe(409);
 
     // Doctor 1 patients endpoint
     const docPatientsRes = await agent.get(`/api/doctors/${doc1Id}/patients`);

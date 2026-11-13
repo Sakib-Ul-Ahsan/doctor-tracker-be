@@ -8,6 +8,12 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { buildDateRangeFilter, escapeRegex } from "../utils/queryHelpers";
 import { logActivity } from "../utils/activityLogger";
 import {
+  assertContactUniqueness,
+  deleteContacts,
+  registerContacts,
+  updateContacts,
+} from "../utils/contactUniqueness";
+import {
   CreateDoctorInput,
   ListDoctorsQuery,
   UpdateDoctorInput,
@@ -104,7 +110,18 @@ export const getDoctors = asyncHandler(async (req: Request, res: Response) => {
 
 export const createDoctor = asyncHandler(async (req: Request, res: Response) => {
   const payload = req.body as CreateDoctorInput;
+
+  // Enforce uniqueness across doctors and patients
+  await assertContactUniqueness({
+    email: payload.email,
+    phone: payload.phone,
+    excludeModel: "Doctor",
+  });
+
   const doctor = await Doctor.create(payload);
+
+  // Sync to database-level contact registry
+  await registerContacts(doctor._id, "Doctor", doctor.email, doctor.phone);
 
   void logActivity(
     "doctor_created",
@@ -151,6 +168,16 @@ export const updateDoctor = asyncHandler(async (req: Request, res: Response) => 
   const id = String(req.params.id);
   const payload = req.body as UpdateDoctorInput;
 
+  // Enforce uniqueness across doctors and patients if email or phone is updated
+  if (payload.email || payload.phone) {
+    await assertContactUniqueness({
+      email: payload.email,
+      phone: payload.phone,
+      excludeId: id,
+      excludeModel: "Doctor",
+    });
+  }
+
   const doctor = await Doctor.findByIdAndUpdate(id, payload, {
     returnDocument: "after",
     runValidators: true,
@@ -158,6 +185,10 @@ export const updateDoctor = asyncHandler(async (req: Request, res: Response) => 
 
   if (!doctor) {
     throw new AppError(404, "Doctor not found", { code: "DOCTOR_NOT_FOUND" });
+  }
+
+  if (payload.email || payload.phone) {
+    await updateContacts(doctor._id, "Doctor", payload.email, payload.phone);
   }
 
   const patientCount = await Patient.countDocuments({ doctorId: id });
@@ -227,6 +258,7 @@ export const deleteDoctor = asyncHandler(async (req: Request, res: Response) => 
   }
 
   await Doctor.findByIdAndDelete(id);
+  await deleteContacts([id]);
 
   void logActivity(
     "doctor_deleted",
@@ -276,6 +308,7 @@ export const bulkDeleteDoctors = asyncHandler(async (req: Request, res: Response
   }
 
   const result = await Doctor.deleteMany({ _id: { $in: ids } });
+  await deleteContacts(ids);
 
   void logActivity(
     "doctor_deleted",

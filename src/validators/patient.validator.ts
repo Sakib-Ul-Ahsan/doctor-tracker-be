@@ -1,6 +1,7 @@
 import { z } from "zod";
 import mongoose from "mongoose";
 import { PATIENT_GENDERS } from "../models/Patient";
+import { bdPhoneSchema } from "./phone.validator";
 
 const objectIdSchema = z
   .string()
@@ -26,11 +27,7 @@ export const createPatientSchema = z.object({
   gender: z.enum(PATIENT_GENDERS, {
     error: "Gender must be Male, Female, or Other",
   }),
-  phone: z
-    .string()
-    .trim()
-    .min(5, "Phone number must be at least 5 characters")
-    .max(30, "Phone number cannot exceed 30 characters"),
+  phone: bdPhoneSchema,
   email: z.string().trim().email("Please enter a valid email address").toLowerCase(),
   condition: z
     .string()

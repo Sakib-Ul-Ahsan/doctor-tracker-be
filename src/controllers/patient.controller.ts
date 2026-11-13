@@ -7,6 +7,12 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { buildDateRangeFilter, escapeRegex } from "../utils/queryHelpers";
 import { logActivity } from "../utils/activityLogger";
 import {
+  assertContactUniqueness,
+  deleteContacts,
+  registerContacts,
+  updateContacts,
+} from "../utils/contactUniqueness";
+import {
   CreatePatientInput,
   ListPatientsQuery,
   UpdatePatientInput,
@@ -83,7 +89,18 @@ export const createPatient = asyncHandler(async (req: Request, res: Response) =>
     });
   }
 
+  // Enforce uniqueness across patients and doctors
+  await assertContactUniqueness({
+    email: payload.email,
+    phone: payload.phone,
+    excludeModel: "Patient",
+  });
+
   const created = await Patient.create(payload);
+
+  // Sync to database-level contact registry
+  await registerContacts(created._id, "Patient", created.email, created.phone);
+
   const patient = await Patient.findById(created._id)
     .populate("doctorId", "name specialization hospital")
     .lean();
@@ -128,6 +145,16 @@ export const updatePatient = asyncHandler(async (req: Request, res: Response) =>
     throw new AppError(404, "Patient not found", { code: "PATIENT_NOT_FOUND" });
   }
 
+  // Enforce uniqueness across patients and doctors if email or phone is updated
+  if (payload.email || payload.phone) {
+    await assertContactUniqueness({
+      email: payload.email,
+      phone: payload.phone,
+      excludeId: id,
+      excludeModel: "Patient",
+    });
+  }
+
   if (payload.doctorId) {
     const doctorExists = await Doctor.exists({ _id: payload.doctorId });
     if (!doctorExists) {
@@ -146,6 +173,10 @@ export const updatePatient = asyncHandler(async (req: Request, res: Response) =>
 
   if (!patient) {
     throw new AppError(404, "Patient not found", { code: "PATIENT_NOT_FOUND" });
+  }
+
+  if (payload.email || payload.phone) {
+    await updateContacts(id, "Patient", payload.email, payload.phone);
   }
 
   const isReassigned =
@@ -186,6 +217,8 @@ export const deletePatient = asyncHandler(async (req: Request, res: Response) =>
     throw new AppError(404, "Patient not found", { code: "PATIENT_NOT_FOUND" });
   }
 
+  await deleteContacts([id]);
+
   void logActivity(
     "patient_deleted",
     `Discharged patient record for ${patient.name} (${patient.condition})`,
@@ -208,6 +241,7 @@ export const bulkDeletePatients = asyncHandler(async (req: Request, res: Respons
   }
 
   const result = await Patient.deleteMany({ _id: { $in: ids } });
+  await deleteContacts(ids);
 
   void logActivity(
     "patient_deleted",
