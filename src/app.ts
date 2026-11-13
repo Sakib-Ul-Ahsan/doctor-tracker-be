@@ -4,8 +4,10 @@ import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import mongoose from "mongoose";
+import swaggerUi from "swagger-ui-express";
 import { env } from "./config/env";
 import apiRoutes from "./routes";
+import { swaggerSpec } from "./docs/swagger";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 export function createApp() {
@@ -18,6 +20,7 @@ export function createApp() {
     helmet({
       crossOriginResourcePolicy: { policy: "cross-origin" },
       crossOriginOpenerPolicy: false,
+      contentSecurityPolicy: false,
     })
   );
   app.use(
@@ -60,10 +63,28 @@ export function createApp() {
     res.status(200).json({
       success: true,
       message: "Doctor Tracker API is online",
+      docs: "/docs",
       health: "/health",
     });
   });
   app.get("/health", healthHandler);
+
+  // OpenAPI schema JSON endpoints
+  app.get("/docs.json", (_req, res) => res.status(200).json(swaggerSpec));
+  app.get("/api/docs.json", (_req, res) => res.status(200).json(swaggerSpec));
+
+  // Interactive Swagger UI documentation
+  const swaggerUiOptions = {
+    customSiteTitle: "Doctor Tracker API Documentation",
+    swaggerOptions: {
+      persistAuthorization: true,
+      displayRequestDuration: true,
+      docExpansion: "list",
+      filter: true,
+    },
+  };
+  app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerUiOptions));
+  app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerUiOptions));
 
   // Mount routes under both /api and /api/v1 for backwards compatibility
   app.use("/api/v1", apiRoutes);
