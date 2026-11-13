@@ -46,3 +46,4 @@ contactRegistrySchema.index({ ownerId: 1, type: 1 });
 export const ContactRegistry: Model<IContactRegistryDocument> =
   mongoose.models.ContactRegistry ||
   mongoose.model<IContactRegistryDocument>("ContactRegistry", contactRegistrySchema);
+
