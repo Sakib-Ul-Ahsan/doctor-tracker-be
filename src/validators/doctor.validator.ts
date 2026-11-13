@@ -47,7 +47,7 @@ export const listDoctorsQuerySchema = z.object({
   startDate: z.string().trim().optional(),
   endDate: z.string().trim().optional(),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(10),
+  limit: z.coerce.number().int().min(1).max(1000).default(10),
   sortBy: z.enum(["createdAt", "name", "specialization", "hospital"]).default("createdAt"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
@@ -59,7 +59,7 @@ export const deleteDoctorQuerySchema = z.object({
 export const doctorPatientsQuerySchema = z.object({
   search: z.string().trim().optional(),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(10),
+  limit: z.coerce.number().int().min(1).max(1000).default(10),
 });
 
 export type CreateDoctorInput = z.infer<typeof createDoctorSchema>;

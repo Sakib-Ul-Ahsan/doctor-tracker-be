@@ -6,6 +6,7 @@ import { AppError } from "../middleware/errorHandler";
 import { sendSuccess } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import { buildDateRangeFilter, escapeRegex } from "../utils/queryHelpers";
+import { logActivity } from "../utils/activityLogger";
 import {
   CreateDoctorInput,
   ListDoctorsQuery,
@@ -53,13 +54,15 @@ export const getDoctors = asyncHandler(async (req: Request, res: Response) => {
               },
             },
             {
-              $addFields: {
-                patientCount: { $size: "$patients" },
-              },
-            },
-            {
               $project: {
-                patients: 0,
+                name: 1,
+                specialization: 1,
+                hospital: 1,
+                phone: 1,
+                email: 1,
+                createdAt: 1,
+                updatedAt: 1,
+                patientCount: { $size: "$patients" },
               },
             },
           ],
@@ -74,13 +77,18 @@ export const getDoctors = asyncHandler(async (req: Request, res: Response) => {
   const total = aggregationResult[0]?.totalCount[0]?.count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
+  const sortedSpecializations = specializations.sort((a: string, b: string) =>
+    a.localeCompare(b)
+  );
+
   return sendSuccess(
     res,
     200,
     {
       doctors: items,
+      specializations: sortedSpecializations,
       filters: {
-        specializations: specializations.sort((a: string, b: string) => a.localeCompare(b)),
+        specializations: sortedSpecializations,
       },
     },
     {
@@ -97,6 +105,14 @@ export const getDoctors = asyncHandler(async (req: Request, res: Response) => {
 export const createDoctor = asyncHandler(async (req: Request, res: Response) => {
   const payload = req.body as CreateDoctorInput;
   const doctor = await Doctor.create(payload);
+
+  void logActivity(
+    "doctor_created",
+    `Dr. ${doctor.name.replace(/^Dr\.?\s+/i, "")} onboarded as ${doctor.specialization} specialist at ${doctor.hospital}`,
+    "doctor",
+    doctor._id.toString(),
+    { specialization: doctor.specialization, hospital: doctor.hospital }
+  );
 
   return sendSuccess(
     res,
@@ -132,7 +148,7 @@ export const getDoctorById = asyncHandler(async (req: Request, res: Response) =>
 });
 
 export const updateDoctor = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = String(req.params.id);
   const payload = req.body as UpdateDoctorInput;
 
   const doctor = await Doctor.findByIdAndUpdate(id, payload, {
@@ -145,6 +161,13 @@ export const updateDoctor = asyncHandler(async (req: Request, res: Response) => 
   }
 
   const patientCount = await Patient.countDocuments({ doctorId: id });
+
+  void logActivity(
+    "doctor_updated",
+    `Updated profile credentials for Dr. ${doctor.name.replace(/^Dr\.?\s+/i, "")}`,
+    "doctor",
+    id
+  );
 
   return sendSuccess(
     res,
@@ -160,7 +183,7 @@ export const updateDoctor = asyncHandler(async (req: Request, res: Response) => 
 });
 
 export const deleteDoctor = asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params.id as string;
+  const id = String(req.params.id);
   const reassignTo = req.query.reassignTo as string | undefined;
 
   const doctor = await Doctor.findById(id);
@@ -205,6 +228,16 @@ export const deleteDoctor = asyncHandler(async (req: Request, res: Response) => 
 
   await Doctor.findByIdAndDelete(id);
 
+  void logActivity(
+    "doctor_deleted",
+    `Removed physician Dr. ${doctor.name.replace(/^Dr\.?\s+/i, "")} from directory${
+      assignedPatientsCount > 0 ? ` (${assignedPatientsCount} patients transferred)` : ""
+    }`,
+    "doctor",
+    id,
+    { assignedPatientsCount, reassignedTo: reassignTo ?? null }
+  );
+
   return sendSuccess(
     res,
     200,
@@ -220,6 +253,40 @@ export const deleteDoctor = asyncHandler(async (req: Request, res: Response) => 
           : "Doctor deleted successfully",
     }
   );
+});
+
+export const bulkDeleteDoctors = asyncHandler(async (req: Request, res: Response) => {
+  const { ids } = req.body as { ids: string[] };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new AppError(400, "Please provide an array of doctor IDs to delete");
+  }
+
+  // Check if any selected doctor has active assigned patients
+  const doctorsWithPatients = await Patient.aggregate([
+    { $match: { doctorId: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) } } },
+    { $group: { _id: "$doctorId", count: { $sum: 1 } } },
+  ]);
+
+  if (doctorsWithPatients.length > 0) {
+    throw new AppError(
+      409,
+      `Cannot bulk delete: ${doctorsWithPatients.length} selected physician(s) still have active assigned patients. Please reassign their patients individually first.`,
+      { code: "DOCTORS_HAVE_PATIENTS" }
+    );
+  }
+
+  const result = await Doctor.deleteMany({ _id: { $in: ids } });
+
+  void logActivity(
+    "doctor_deleted",
+    `Bulk removed ${result.deletedCount} physician record(s)`,
+    "doctor"
+  );
+
+  return sendSuccess(res, 200, {
+    deletedCount: result.deletedCount,
+    deletedIds: ids,
+  });
 });
 
 export const getDoctorPatients = asyncHandler(async (req: Request, res: Response) => {

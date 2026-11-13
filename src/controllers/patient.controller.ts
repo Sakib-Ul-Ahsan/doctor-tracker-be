@@ -5,6 +5,7 @@ import { AppError } from "../middleware/errorHandler";
 import { sendSuccess } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import { buildDateRangeFilter, escapeRegex } from "../utils/queryHelpers";
+import { logActivity } from "../utils/activityLogger";
 import {
   CreatePatientInput,
   ListPatientsQuery,
@@ -87,6 +88,15 @@ export const createPatient = asyncHandler(async (req: Request, res: Response) =>
     .populate("doctorId", "name specialization hospital")
     .lean();
 
+  const doctorName = (patient?.doctorId as any)?.name ?? "physician";
+  void logActivity(
+    "patient_created",
+    `Registered patient ${created.name} (${created.age} yrs, ${created.gender}) under ${doctorName} for ${created.condition}`,
+    "patient",
+    created._id.toString(),
+    { condition: created.condition, doctorId: payload.doctorId }
+  );
+
   return sendSuccess(
     res,
     201,
@@ -110,8 +120,13 @@ export const getPatientById = asyncHandler(async (req: Request, res: Response) =
 });
 
 export const updatePatient = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = String(req.params.id);
   const payload = req.body as UpdatePatientInput;
+
+  const existingPatient = await Patient.findById(id).lean();
+  if (!existingPatient) {
+    throw new AppError(404, "Patient not found", { code: "PATIENT_NOT_FOUND" });
+  }
 
   if (payload.doctorId) {
     const doctorExists = await Doctor.exists({ _id: payload.doctorId });
@@ -133,6 +148,28 @@ export const updatePatient = asyncHandler(async (req: Request, res: Response) =>
     throw new AppError(404, "Patient not found", { code: "PATIENT_NOT_FOUND" });
   }
 
+  const isReassigned =
+    payload.doctorId &&
+    payload.doctorId.toString() !== existingPatient.doctorId?.toString();
+
+  if (isReassigned) {
+    const newDoctorName = (patient.doctorId as any)?.name ?? "new physician";
+    void logActivity(
+      "patient_reassigned",
+      `Transferred care of patient ${patient.name} to ${newDoctorName}`,
+      "patient",
+      id,
+      { newDoctorId: payload.doctorId }
+    );
+  } else {
+    void logActivity(
+      "patient_updated",
+      `Updated clinical information for patient ${patient.name}`,
+      "patient",
+      id
+    );
+  }
+
   return sendSuccess(
     res,
     200,
@@ -142,12 +179,19 @@ export const updatePatient = asyncHandler(async (req: Request, res: Response) =>
 });
 
 export const deletePatient = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = String(req.params.id);
 
   const patient = await Patient.findByIdAndDelete(id).lean();
   if (!patient) {
     throw new AppError(404, "Patient not found", { code: "PATIENT_NOT_FOUND" });
   }
+
+  void logActivity(
+    "patient_deleted",
+    `Discharged patient record for ${patient.name} (${patient.condition})`,
+    "patient",
+    id
+  );
 
   return sendSuccess(
     res,
@@ -155,4 +199,24 @@ export const deletePatient = asyncHandler(async (req: Request, res: Response) =>
     { deletedId: id },
     { message: "Patient record deleted successfully" }
   );
+});
+
+export const bulkDeletePatients = asyncHandler(async (req: Request, res: Response) => {
+  const { ids } = req.body as { ids: string[] };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new AppError(400, "Please provide an array of patient IDs to delete");
+  }
+
+  const result = await Patient.deleteMany({ _id: { $in: ids } });
+
+  void logActivity(
+    "patient_deleted",
+    `Bulk discharged ${result.deletedCount} patient record(s)`,
+    "patient"
+  );
+
+  return sendSuccess(res, 200, {
+    deletedCount: result.deletedCount,
+    deletedIds: ids,
+  });
 });

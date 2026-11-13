@@ -1,17 +1,19 @@
 import { Request, Response } from "express";
 import { Doctor } from "../models/Doctor";
 import { Patient } from "../models/Patient";
+import { Activity } from "../models/Activity";
 import { sendSuccess } from "../utils/apiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export const getDashboardStats = asyncHandler(async (_req: Request, res: Response) => {
+export const getDashboardStats = asyncHandler(async (req: Request, res: Response) => {
   const now = new Date();
+  const days = Math.min(60, Math.max(3, Number(req.query.days) || 14));
 
-  // 14 days UTC window aligned with MongoDB's UTC $dateToString
-  const fourteenDaysAgo = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 13, 0, 0, 0, 0)
+  // Dynamic UTC window based on days parameter (default 14)
+  const rangeStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (days - 1), 0, 0, 0, 0)
   );
 
   const sixMonthsAgo = new Date(
@@ -28,6 +30,7 @@ export const getDashboardStats = asyncHandler(async (_req: Request, res: Respons
     monthlyPatientsAgg,
     monthlyDoctorsAgg,
     specializationsCountAgg,
+    recentActivities,
   ] = await Promise.all([
     Doctor.countDocuments(),
     Patient.countDocuments(),
@@ -109,7 +112,7 @@ export const getDashboardStats = asyncHandler(async (_req: Request, res: Respons
       { $limit: 8 },
     ]),
     Patient.aggregate([
-      { $match: { createdAt: { $gte: fourteenDaysAgo } } },
+      { $match: { createdAt: { $gte: rangeStart } } },
       {
         $group: {
           _id: {
@@ -150,6 +153,7 @@ export const getDashboardStats = asyncHandler(async (_req: Request, res: Respons
       { $group: { _id: "$specialization" } },
       { $count: "count" },
     ]),
+    Activity.find().sort({ createdAt: -1 }).limit(10).lean(),
   ]);
 
   const avgPatientsPerDoctor =
@@ -157,19 +161,19 @@ export const getDashboardStats = asyncHandler(async (_req: Request, res: Respons
 
   const specializationsCount = specializationsCountAgg[0]?.count ?? 0;
 
-  // Build continuous 14-day series so trends chart always renders cleanly
+  // Build continuous series of `days` points so trends chart always renders cleanly
   const dailyMap = new Map<string, number>();
   for (const item of dailyTrendAgg as Array<{ _id: string; count: number }>) {
     dailyMap.set(item._id, item.count);
   }
 
   const registrationTrends: Array<{ date: string; label: string; count: number }> = [];
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < days; i++) {
     const d = new Date(
       Date.UTC(
-        fourteenDaysAgo.getUTCFullYear(),
-        fourteenDaysAgo.getUTCMonth(),
-        fourteenDaysAgo.getUTCDate() + i,
+        rangeStart.getUTCFullYear(),
+        rangeStart.getUTCMonth(),
+        rangeStart.getUTCDate() + i,
         0,
         0,
         0,
@@ -222,6 +226,12 @@ export const getDashboardStats = asyncHandler(async (_req: Request, res: Respons
     registrationTrends,
     doctorDistribution,
     monthlyStats,
+    activities: recentActivities,
   });
 });
 
+export const getActivities = asyncHandler(async (req: Request, res: Response) => {
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 15));
+  const activities = await Activity.find().sort({ createdAt: -1 }).limit(limit).lean();
+  return sendSuccess(res, 200, { activities });
+});

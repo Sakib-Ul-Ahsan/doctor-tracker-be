@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  bulkDeleteDoctors,
   createDoctor,
   deleteDoctor,
   getDoctorById,
@@ -24,6 +25,7 @@ router.use(authenticate);
 
 router.get("/", validate({ query: listDoctorsQuerySchema }), getDoctors);
 router.post("/", validate({ body: createDoctorSchema }), createDoctor);
+router.post("/bulk-delete", bulkDeleteDoctors);
 router.get("/:id", validate({ params: idParamSchema }), getDoctorById);
 router.patch("/:id", validate({ params: idParamSchema, body: updateDoctorSchema }), updateDoctor);
 router.delete(
@@ -38,4 +40,3 @@ router.get(
 );
 
 export default router;
-
