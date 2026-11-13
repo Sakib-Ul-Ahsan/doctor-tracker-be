@@ -9,11 +9,14 @@ const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
 export const getDashboardStats = asyncHandler(async (_req: Request, res: Response) => {
   const now = new Date();
 
-  const fourteenDaysAgo = new Date(now);
-  fourteenDaysAgo.setHours(0, 0, 0, 0);
-  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
+  // 14 days UTC window aligned with MongoDB's UTC $dateToString
+  const fourteenDaysAgo = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 13, 0, 0, 0, 0)
+  );
 
-  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1, 0, 0, 0, 0);
+  const sixMonthsAgo = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1, 0, 0, 0, 0)
+  );
 
   const [
     totalDoctors,
@@ -162,10 +165,19 @@ export const getDashboardStats = asyncHandler(async (_req: Request, res: Respons
 
   const registrationTrends: Array<{ date: string; label: string; count: number }> = [];
   for (let i = 0; i < 14; i++) {
-    const d = new Date(fourteenDaysAgo);
-    d.setDate(fourteenDaysAgo.getDate() + i);
+    const d = new Date(
+      Date.UTC(
+        fourteenDaysAgo.getUTCFullYear(),
+        fourteenDaysAgo.getUTCMonth(),
+        fourteenDaysAgo.getUTCDate() + i,
+        0,
+        0,
+        0,
+        0
+      )
+    );
     const isoDate = d.toISOString().slice(0, 10);
-    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`;
+    const label = `${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCDate()}`;
     registrationTrends.push({
       date: isoDate,
       label,
@@ -186,13 +198,13 @@ export const getDashboardStats = asyncHandler(async (_req: Request, res: Respons
 
   const monthlyStats: Array<{ month: string; label: string; patients: number; doctors: number }> = [];
   for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const year = d.getFullYear();
-    const month = d.getMonth() + 1;
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const year = d.getUTCFullYear();
+    const month = d.getUTCMonth() + 1;
     const key = `${year}-${month}`;
     monthlyStats.push({
       month: `${year}-${String(month).padStart(2, "0")}`,
-      label: `${MONTH_NAMES[d.getMonth()]} ${year}`,
+      label: `${MONTH_NAMES[d.getUTCMonth()]} ${year}`,
       patients: monthlyPatientMap.get(key) ?? 0,
       doctors: monthlyDoctorMap.get(key) ?? 0,
     });
